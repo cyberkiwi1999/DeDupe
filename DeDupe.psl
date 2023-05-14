@@ -1,0 +1,50 @@
+# Define folder paths
+$sourceFolderPath = "C:\<Path>\<to>\<Source>"
+$destinationFolderPath = "C:\<Path>\<to>\<Dest>"
+$logFilePath = "C:\<Path>\<to>\<LogFile>.txt"
+
+# Create the destination folder and log file if they don't exist
+if (!(Test-Path -Path $destinationFolderPath)) {
+    New-Item -Path $destinationFolderPath -ItemType Directory | Out-Null
+}
+if (!(Test-Path -Path $logFilePath)) {
+    New-Item -Path $logFilePath -ItemType File | Out-Null
+}
+
+# Get all files in the source folder
+$files = Get-ChildItem -Path $sourceFolderPath -File -Recurse
+
+# Hashtable to store hash values
+$hashTable = @{}
+
+# Compute hash values for each file and check for duplicates
+foreach ($file in $files) {
+    $hash = Get-FileHash -Path $file.FullName -Algorithm SHA256
+
+    if ($hashTable.ContainsKey($hash.Hash)) {
+        # If the hash already exists in the hashtable, it's a duplicate
+
+        # Get the relative subfolder path
+        $relativeSubfolderPath = $file.DirectoryName.Substring($sourceFolderPath.Length)
+
+        # Create the subfolder in the destination folder if it doesn't exist
+        $destinationSubfolderPath = Join-Path -Path $destinationFolderPath -ChildPath $relativeSubfolderPath
+        if (!(Test-Path -Path $destinationSubfolderPath)) {
+            New-Item -Path $destinationSubfolderPath -ItemType Directory | Out-Null
+        }
+
+        # Move the duplicate file to the destination subfolder
+        $destinationFilePath = Join-Path -Path $destinationSubfolderPath -ChildPath $file.Name
+        Move-Item -Path $file.FullName -Destination $destinationFilePath
+
+        # Write the details to the log file
+        $logMessage = "Moved duplicate file '{0}' to '{1}'" -f $file.FullName, $destinationFilePath
+        Add-Content -Path $logFilePath -Value $logMessage
+
+        Write-Host $logMessage -ForegroundColor Red
+        $hashTable[$hash.Hash].Add($file.FullName)
+    } else {
+        # If the hash doesn't exist in the hashtable, add it
+        $hashTable[$hash.Hash] = [System.Collections.ArrayList]@($file.FullName)
+    }
+}
